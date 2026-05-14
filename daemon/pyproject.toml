@@ -1,0 +1,23 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+dependencies = []
+name = "soundgate"
+requires-python = ">=3.13"
+version = "0.1.0"
+
+[project.scripts]
+soundgate = "soundgate.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/soundgate"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
