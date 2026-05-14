@@ -44,6 +44,7 @@
             dependencies = with pythonPkgs; [
                 fastapi
                 uvicorn
+                dbus-fast
             ];
             prePatch = ''
                 cat ${pkgs.writers.writeTOML "pyproject.toml" pyproject} > pyproject.toml
