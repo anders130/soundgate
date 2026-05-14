@@ -46,6 +46,9 @@ class ProcessEventUseCase:
         if event.metadata is not None:
             source.metadata = event.metadata
 
+        if event.position_us is not None:
+            source.position_us = event.position_us
+
         await self._publish()
 
     @property

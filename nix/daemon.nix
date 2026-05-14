@@ -10,6 +10,7 @@
             pytest-asyncio
             black
             isort
+            httpx
         ];
         src = ../daemon;
         package = self'.packages.default;
@@ -40,7 +41,10 @@
             version = "0.1.0";
             format = "pyproject";
             build-system = [pythonPkgs.hatchling];
-            dependencies = [];
+            dependencies = with pythonPkgs; [
+                fastapi
+                uvicorn
+            ];
             prePatch = ''
                 cat ${pkgs.writers.writeTOML "pyproject.toml" pyproject} > pyproject.toml
             '';

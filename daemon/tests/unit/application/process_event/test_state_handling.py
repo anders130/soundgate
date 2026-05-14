@@ -35,6 +35,13 @@ async def test_event_without_state_keeps_existing_state(
 
 
 @pytest.mark.asyncio
+async def test_event_with_position_updates_source(volume_port: FakeVolumePort) -> None:
+    uc = make_use_case(volume_port)
+    await uc.handle_event(PlayerEvent(source="bluetooth", position_us=30_000_000))
+    assert uc.sources["bluetooth"].position_us == 30_000_000
+
+
+@pytest.mark.asyncio
 async def test_event_without_state_updates_last_event_at(
     volume_port: FakeVolumePort,
 ) -> None:
