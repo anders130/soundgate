@@ -48,6 +48,15 @@ class ProcessEventUseCase:
 
         await self._publish()
 
+    @property
+    def volume(self) -> float:
+        return self._volume
+
+    async def set_volume(self, level: float) -> None:
+        self._volume = max(0.0, min(1.0, level))
+        await self._volume_port.set_volume(self._volume)
+        await self._publish()
+
     async def tick(self) -> None:
         await self._publish()
 
