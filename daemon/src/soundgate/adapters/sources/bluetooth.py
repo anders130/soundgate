@@ -272,3 +272,6 @@ class BluetoothAdapter:
 
     async def previous_track(self) -> None:
         await self._media_player_call("Previous")
+
+    async def seek(self, position_s: float) -> None:
+        _log.debug("BT seek not supported by BlueZ AVRCP")
