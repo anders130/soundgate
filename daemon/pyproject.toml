@@ -3,7 +3,7 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [project]
-dependencies = []
+dependencies = ["aiohttp"]
 name = "soundgate"
 requires-python = ">=3.13"
 version = "0.1.0"

@@ -12,6 +12,7 @@
             isort
             httpx
             dbus-fast
+            aioresponses
         ];
         src = ../daemon;
         package = self'.packages.default;
@@ -23,7 +24,7 @@
             project = {
                 name = "soundgate";
                 version = "0.1.0";
-                dependencies = [];
+                dependencies = ["aiohttp"];
                 requires-python = ">=3.13";
                 scripts.soundgate = "soundgate.main:run";
             };
@@ -46,6 +47,7 @@
                 fastapi
                 uvicorn
                 dbus-fast
+                aiohttp
             ];
             prePatch = ''
                 cat ${pkgs.writers.writeTOML "pyproject.toml" pyproject} > pyproject.toml

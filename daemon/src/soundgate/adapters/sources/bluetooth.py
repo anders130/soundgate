@@ -1,5 +1,7 @@
 import asyncio
+import dataclasses
 import logging
+from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar, overload
 
 from dbus_fast import BusType
@@ -7,7 +9,10 @@ from dbus_fast.aio import MessageBus
 from dbus_fast.constants import MessageType
 from dbus_fast.message import Message
 
+from soundgate.adapters.coverart import lookup_art as _default_lookup_art
 from soundgate.domain.events import Metadata, PlaybackState, PlayerEvent
+
+_ArtLookup = Callable[[str, str], Coroutine[Any, Any, str | None]]
 
 _log = logging.getLogger(__name__)
 
@@ -46,8 +51,11 @@ def _parse_track(track: dict) -> Metadata:
 
 
 class BluetoothAdapter:
-    def __init__(self, event_port) -> None:
+    def __init__(self, event_port, art_lookup: _ArtLookup | None = None) -> None:
         self._port = event_port
+        self._art_lookup: _ArtLookup = (
+            art_lookup if art_lookup is not None else _default_lookup_art
+        )
         self._bus: MessageBus | None = None
         self._connected: set[str] = set()
         self._media_player_path: str | None = None
@@ -202,15 +210,26 @@ class BluetoothAdapter:
             if state is not None:
                 await self._port.handle_event(PlayerEvent(source=_SOURCE, state=state))
         if "Track" in props:
+            metadata = _parse_track(_v(props["Track"]))
             await self._port.handle_event(
-                PlayerEvent(source=_SOURCE, metadata=_parse_track(_v(props["Track"])))
+                PlayerEvent(source=_SOURCE, metadata=metadata)
             )
+            if metadata.artist and metadata.album:
+                asyncio.get_running_loop().create_task(
+                    self._fetch_and_emit_art(metadata)
+                )
         if "Volume" in props:
             raw: int | None = _v(props["Volume"])
             if raw is not None:
                 await self._port.handle_event(
                     PlayerEvent(source=_SOURCE, volume=raw / 127.0)
                 )
+
+    async def _fetch_and_emit_art(self, metadata: Metadata) -> None:
+        url = await self._art_lookup(metadata.artist or "", metadata.album or "")
+        if url:
+            updated = dataclasses.replace(metadata, art_url=url)
+            await self._port.handle_event(PlayerEvent(source=_SOURCE, metadata=updated))
 
     async def _media_transport_props_changed(self, props: dict) -> None:
         if "Volume" not in props:
