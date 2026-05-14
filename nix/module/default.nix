@@ -10,6 +10,7 @@
     in {
         imports = [
             inputs.self.nixosModules.soundgate-bluetooth
+            inputs.self.nixosModules.soundgate-librespot
             inputs.self.nixosModules.soundgate-hass
         ];
 

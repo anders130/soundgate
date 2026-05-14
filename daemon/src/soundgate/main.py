@@ -7,6 +7,7 @@ import os
 from .adapters.sinks.pipewire_volume import PipewireVolumeAdapter
 from .adapters.sinks.rest_api.adapter import RestApiAdapter
 from .adapters.sources.bluetooth import BluetoothAdapter
+from .adapters.sources.librespot import LibrespotAdapter
 from .application.use_cases.process_event import ProcessEventUseCase
 from .application.use_cases.query_state import QueryStateUseCase
 from .domain.aggregator import AggregatorService
@@ -17,7 +18,7 @@ logging.basicConfig(
 )
 _log = logging.getLogger(__name__)
 
-_PRIORITY_MAP = {"bluetooth": 0}
+_PRIORITY_MAP = {"bluetooth": 0, "spotify": 1}
 
 
 async def main() -> None:
@@ -40,13 +41,14 @@ async def main() -> None:
 
     query = QueryStateUseCase(sources=sources, aggregator=aggregator)
     bluetooth = BluetoothAdapter(process)
+    librespot = LibrespotAdapter.from_env(process)
     rest_api = RestApiAdapter.from_env(
         query=query,
         process=process,
         control_map={"bluetooth": bluetooth},
     )
 
-    await asyncio.gather(bluetooth.run(), rest_api.run())
+    await asyncio.gather(bluetooth.run(), librespot.run(), rest_api.run())
 
 
 def run() -> None:
