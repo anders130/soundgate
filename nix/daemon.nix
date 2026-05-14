@@ -34,7 +34,10 @@
                 testpaths = ["tests"];
                 pythonpath = ["src"];
             };
-            tool.isort.profile = "black";
+            tool.isort = {
+                profile = "black";
+                known_first_party = ["soundgate"];
+            };
         };
     in {
         packages.default = pythonPkgs.buildPythonPackage {
@@ -68,7 +71,7 @@
             runtimeInputs = devDeps;
             text = ''
                 black daemon/
-                isort daemon/ --profile black
+                isort daemon/ --profile black --settings-path daemon/
             '';
         };
 
@@ -87,7 +90,7 @@
             '';
             format = pkgs.runCommand "soundgate-format" checkDeps ''
                 black --check $src
-                isort $src --check --diff --known-local-folder soundgate --profile black
+                isort $src --check --diff --profile black --settings-path $src
                 touch $out
             '';
         };
