@@ -1,5 +1,4 @@
 import pytest
-
 from soundgate.application.snapshot import Snapshot
 
 

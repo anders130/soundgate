@@ -1,5 +1,4 @@
 import pytest
-
 from soundgate.adapters.sinks.pipewire_volume import PipewireVolumeAdapter
 
 from .conftest import FakeWpctl

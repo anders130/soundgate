@@ -1,5 +1,4 @@
 import pytest
-
 from soundgate.application.use_cases.query_state import QueryStateUseCase
 from soundgate.domain.aggregator import AggregatorService
 from soundgate.domain.events import PlaybackState
