@@ -1,3 +1,5 @@
+import os
+
 import uvicorn
 
 from ....application.ports.outbound import SourceControlPort
@@ -16,6 +18,20 @@ class RestApiAdapter:
     ) -> None:
         self._app = build_app(query, process, control_map)
         self._port = port
+
+    @classmethod
+    def from_env(
+        cls,
+        query: QueryStateUseCase,
+        process: ProcessEventUseCase,
+        control_map: dict[str, SourceControlPort],
+    ) -> "RestApiAdapter":
+        return cls(
+            query=query,
+            process=process,
+            control_map=control_map,
+            port=int(os.environ.get("SOUNDGATE_HTTP_PORT", "7676")),
+        )
 
     async def run(self) -> None:
         config = uvicorn.Config(

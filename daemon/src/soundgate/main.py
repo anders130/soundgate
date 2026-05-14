@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+
+from .adapters.sinks.pipewire_volume import PipewireVolumeAdapter
+from .adapters.sinks.rest_api.adapter import RestApiAdapter
+from .adapters.sources.bluetooth import BluetoothAdapter
+from .application.use_cases.process_event import ProcessEventUseCase
+from .application.use_cases.query_state import QueryStateUseCase
+from .domain.aggregator import AggregatorService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -9,9 +17,39 @@ logging.basicConfig(
 )
 _log = logging.getLogger(__name__)
 
+_PRIORITY_MAP = {"bluetooth": 0}
+
 
 async def main() -> None:
     _log.info("soundgate starting")
+
+    inactivity_timeout = int(os.environ.get("SOUNDGATE_INACTIVITY_TIMEOUT", "10"))
+
+    sources: dict = {}
+    aggregator = AggregatorService(inactivity_timeout=inactivity_timeout)
+    volume_adapter = PipewireVolumeAdapter.from_env()
+
+    process = ProcessEventUseCase(
+        sources=sources,
+        aggregator=aggregator,
+        priority_map=_PRIORITY_MAP,
+        volume_port=volume_adapter,
+    )
+
+    saved = await volume_adapter.restore_saved()
+    if saved is not None:
+        process._volume = saved  # type: ignore[assignment]
+
+    query = QueryStateUseCase(sources=sources, aggregator=aggregator)
+    bluetooth = BluetoothAdapter(process)
+    rest_api = RestApiAdapter.from_env(
+        query=query,
+        process=process,
+        control_map={"bluetooth": bluetooth},
+    )
+    process.register_sink(rest_api)
+
+    await asyncio.gather(bluetooth.run(), rest_api.run())
 
 
 def run() -> None:
