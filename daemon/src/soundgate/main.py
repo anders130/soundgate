@@ -28,17 +28,15 @@ async def main() -> None:
     sources: dict = {}
     aggregator = AggregatorService(inactivity_timeout=inactivity_timeout)
     volume_adapter = PipewireVolumeAdapter.from_env()
+    saved_volume = await volume_adapter.restore_saved()
 
     process = ProcessEventUseCase(
         sources=sources,
         aggregator=aggregator,
         priority_map=_PRIORITY_MAP,
         volume_port=volume_adapter,
+        initial_volume=saved_volume if saved_volume is not None else 1.0,
     )
-
-    saved = await volume_adapter.restore_saved()
-    if saved is not None:
-        process._volume = saved  # type: ignore[assignment]
 
     query = QueryStateUseCase(sources=sources, aggregator=aggregator)
     bluetooth = BluetoothAdapter(process)
@@ -47,7 +45,6 @@ async def main() -> None:
         process=process,
         control_map={"bluetooth": bluetooth},
     )
-    process.register_sink(rest_api)
 
     await asyncio.gather(bluetooth.run(), rest_api.run())
 

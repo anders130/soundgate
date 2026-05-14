@@ -15,12 +15,13 @@ class ProcessEventUseCase:
         aggregator: AggregatorService,
         priority_map: dict[str, int],
         volume_port: VolumePort,
+        initial_volume: float = 1.0,
     ) -> None:
         self.sources = sources
         self._aggregator = aggregator
         self._priority_map = priority_map
         self._volume_port = volume_port
-        self._volume: float = 1.0
+        self._volume: float = initial_volume
         self._sinks: list[StateExportPort] = []
 
     def register_sink(self, sink: StateExportPort) -> None:

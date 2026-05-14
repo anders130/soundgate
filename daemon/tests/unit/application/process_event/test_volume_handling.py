@@ -50,6 +50,17 @@ def test_volume_property_defaults_to_one(volume_port: FakeVolumePort) -> None:
     assert uc.volume == 1.0
 
 
+def test_initial_volume_overrides_default(volume_port: FakeVolumePort) -> None:
+    uc = ProcessEventUseCase(
+        sources={},
+        aggregator=AggregatorService(),
+        priority_map={},
+        volume_port=volume_port,
+        initial_volume=0.6,
+    )
+    assert uc.volume == 0.6
+
+
 @pytest.mark.asyncio
 async def test_set_volume_calls_volume_port(volume_port: FakeVolumePort) -> None:
     uc = make_use_case(volume_port)
