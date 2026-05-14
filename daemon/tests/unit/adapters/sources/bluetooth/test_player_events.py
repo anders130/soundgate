@@ -6,6 +6,42 @@ from soundgate.domain.events import PlaybackState
 from .conftest import FakeEventPort
 
 
+class FakeVariant:
+    def __init__(self, value: object) -> None:
+        self.value = value
+
+
+@pytest.mark.asyncio
+async def test_variant_status_playing_emits_playing(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    await adapter._media_player_props_changed({"Status": FakeVariant("playing")})
+    assert port.events[-1].state == PlaybackState.PLAYING
+
+
+@pytest.mark.asyncio
+async def test_variant_status_paused_emits_paused(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    await adapter._media_player_props_changed({"Status": FakeVariant("paused")})
+    assert port.events[-1].state == PlaybackState.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_variant_track_change_emits_metadata(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    await adapter._media_player_props_changed(
+        {"Track": FakeVariant({"Title": "Song", "Artist": "Artist"})}
+    )
+    assert port.events[-1].metadata is not None
+    assert port.events[-1].metadata.title == "Song"
+
+
+@pytest.mark.asyncio
+async def test_variant_volume_emits_normalized_volume(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    await adapter._media_player_props_changed({"Volume": FakeVariant(127)})
+    assert port.events[-1].volume == pytest.approx(1.0)
+
+
 @pytest.mark.asyncio
 async def test_status_playing_emits_playing(port: FakeEventPort) -> None:
     adapter = BluetoothAdapter(port)

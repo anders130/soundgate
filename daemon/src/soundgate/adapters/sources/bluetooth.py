@@ -198,17 +198,19 @@ class BluetoothAdapter:
 
     async def _media_player_props_changed(self, props: dict) -> None:
         if "Status" in props:
-            state = _BT_STATE_MAP.get(props["Status"])
+            state = _BT_STATE_MAP.get(_v(props["Status"]))
             if state is not None:
                 await self._port.handle_event(PlayerEvent(source=_SOURCE, state=state))
         if "Track" in props:
             await self._port.handle_event(
-                PlayerEvent(source=_SOURCE, metadata=_parse_track(props["Track"]))
+                PlayerEvent(source=_SOURCE, metadata=_parse_track(_v(props["Track"])))
             )
         if "Volume" in props:
-            await self._port.handle_event(
-                PlayerEvent(source=_SOURCE, volume=props["Volume"] / 127.0)
-            )
+            raw: int | None = _v(props["Volume"])
+            if raw is not None:
+                await self._port.handle_event(
+                    PlayerEvent(source=_SOURCE, volume=raw / 127.0)
+                )
 
     async def _media_transport_props_changed(self, props: dict) -> None:
         if "Volume" not in props:
