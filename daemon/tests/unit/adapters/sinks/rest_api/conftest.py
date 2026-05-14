@@ -1,5 +1,6 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
+
 from soundgate.adapters.sinks.rest_api.app import build_app
 from soundgate.application.use_cases.process_event import ProcessEventUseCase
 from soundgate.application.use_cases.query_state import QueryStateUseCase

@@ -1,4 +1,5 @@
 import pytest
+
 from soundgate.application.use_cases.process_event import ProcessEventUseCase
 from soundgate.domain.aggregator import AggregatorService
 

@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+
 from soundgate.application.use_cases.process_event import ProcessEventUseCase
 from soundgate.domain.events import PlaybackState, PlayerEvent
 

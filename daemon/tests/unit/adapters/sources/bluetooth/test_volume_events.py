@@ -1,4 +1,5 @@
 import pytest
+
 from soundgate.adapters.sources.bluetooth import BluetoothAdapter
 
 from .conftest import FakeEventPort

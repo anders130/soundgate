@@ -1,4 +1,5 @@
 import pytest
+
 from soundgate.domain.events import PlayerEvent
 
 

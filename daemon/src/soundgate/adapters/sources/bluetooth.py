@@ -6,6 +6,7 @@ from dbus_fast import BusType
 from dbus_fast.aio import MessageBus
 from dbus_fast.constants import MessageType
 from dbus_fast.message import Message
+
 from soundgate.domain.events import Metadata, PlaybackState, PlayerEvent
 
 _log = logging.getLogger(__name__)

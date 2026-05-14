@@ -1,4 +1,5 @@
 import pytest
+
 from soundgate.adapters.sources.bluetooth import BluetoothAdapter
 from soundgate.domain.events import PlaybackState
 
