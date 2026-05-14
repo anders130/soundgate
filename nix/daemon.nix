@@ -11,6 +11,7 @@
             black
             isort
             httpx
+            dbus-fast
         ];
         src = ../daemon;
         package = self'.packages.default;
