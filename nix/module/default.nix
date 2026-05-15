@@ -37,6 +37,11 @@
                 type = types.str;
                 default = "@DEFAULT_SINK@";
             };
+            controlPipewireVolume = mkOption {
+                type = types.bool;
+                default = true;
+                description = "Whether soundgate sets PipeWire volume directly. Set to false when an external system (e.g. Home Assistant syncing to a speaker) controls the physical volume — keeps PipeWire at 100% to avoid double-attenuation.";
+            };
         };
 
         config = mkIf cfg.enable {
@@ -56,6 +61,7 @@
                     SOUNDGATE_HTTP_PORT = toString cfg.httpPort;
                     SOUNDGATE_INACTIVITY_TIMEOUT = toString cfg.inactivityTimeout;
                     SOUNDGATE_PIPEWIRE_SINK = cfg.pipewireSink;
+                    SOUNDGATE_CONTROL_PIPEWIRE_VOLUME = if cfg.controlPipewireVolume then "1" else "0";
                     SOUNDGATE_CACHE_DIR = "/var/cache/soundgate";
                     PIPEWIRE_RUNTIME_DIR = "/run/pipewire";
                 };

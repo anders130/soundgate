@@ -28,10 +28,12 @@ class PipewireVolumeAdapter:
         sink: str = "@DEFAULT_SINK@",
         volume_file: Path = Path("/var/cache/soundgate/volume"),
         wpctl_fn: WpctlFn = _wpctl_subprocess,
+        control_pipewire: bool = True,
     ) -> None:
         self._sink = sink
         self._volume_file = volume_file
         self._wpctl = wpctl_fn
+        self._control_pipewire = control_pipewire
 
     @classmethod
     def from_env(cls) -> "PipewireVolumeAdapter":
@@ -41,11 +43,14 @@ class PipewireVolumeAdapter:
                 os.environ.get("SOUNDGATE_CACHE_DIR", "/var/cache/soundgate")
             )
             / "volume",
+            control_pipewire=os.environ.get("SOUNDGATE_CONTROL_PIPEWIRE_VOLUME", "1")
+            != "0",
         )
 
     async def set_volume(self, level: float) -> None:
         clamped = max(0.0, min(1.0, level))
-        await self._wpctl("set-volume", self._sink, f"{clamped:.3f}")
+        if self._control_pipewire:
+            await self._wpctl("set-volume", self._sink, f"{clamped:.3f}")
         try:
             self._volume_file.parent.mkdir(parents=True, exist_ok=True)
             self._volume_file.write_text(str(clamped))
@@ -68,7 +73,10 @@ class PipewireVolumeAdapter:
         try:
             saved = float(self._volume_file.read_text().strip())
             clamped = max(0.0, min(1.0, saved))
-            await self.set_volume(clamped)
+            if self._control_pipewire:
+                await self._wpctl("set-volume", self._sink, f"{clamped:.3f}")
+            else:
+                await self._wpctl("set-volume", self._sink, "1.000")
             return clamped
         except (OSError, ValueError):
             return None

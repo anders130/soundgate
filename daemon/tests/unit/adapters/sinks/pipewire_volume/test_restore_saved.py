@@ -39,3 +39,19 @@ async def test_restore_saved_clamps_persisted_value(wpctl: FakeWpctl, tmp_path) 
     adapter = make_adapter(wpctl, tmp_path)
     result = await adapter.restore_saved()
     assert result == 1.0
+
+
+@pytest.mark.asyncio
+async def test_restore_saved_passthrough_sets_pipewire_to_max(
+    wpctl: FakeWpctl, tmp_path
+) -> None:
+    (tmp_path / "volume").write_text("0.5")
+    adapter = PipewireVolumeAdapter(
+        sink="@DEFAULT_SINK@",
+        volume_file=tmp_path / "volume",
+        wpctl_fn=wpctl,
+        control_pipewire=False,
+    )
+    result = await adapter.restore_saved()
+    assert result == 0.5
+    assert wpctl.calls == [("set-volume", "@DEFAULT_SINK@", "1.000")]
