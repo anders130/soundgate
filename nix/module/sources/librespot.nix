@@ -56,8 +56,9 @@
                 default = "log";
             };
             initialVolume = mkOption {
-                type = types.int;
-                default = 100;
+                type = types.nullOr types.int;
+                default = null;
+                description = "Initial volume (0-100). Null lets librespot use its cache, avoiding a forced 100% on every restart.";
             };
             credentialsFile = mkOption {
                 type = types.nullOr types.path;
@@ -90,6 +91,7 @@
                 wantedBy = ["multi-user.target"];
                 wants = ["network-online.target"];
                 after = ["network-online.target" "pipewire.service"];
+                environment.PIPEWIRE_RUNTIME_DIR = "/run/pipewire";
                 serviceConfig =
                     {
                         User = "librespot";
@@ -102,13 +104,12 @@
                             + " --device-type ${cfg.deviceType}"
                             + " --zeroconf-port ${toString cfg.zeroconfPort}"
                             + " --volume-ctrl ${cfg.volumeCtrl}"
-                            + " --initial-volume ${toString cfg.initialVolume}"
+                            + lib.optionalString (cfg.initialVolume != null) " --initial-volume ${toString cfg.initialVolume}"
                             + " --cache /var/cache/librespot"
                             + " --onevent ${onEventScript}";
                         CacheDirectory = "librespot";
                         Restart = "on-failure";
                         RestartSec = "3s";
-                        PIPEWIRE_RUNTIME_DIR = "/run/pipewire";
                     }
                     // lib.optionalAttrs (cfg.credentialsFile != null) {
                         EnvironmentFile = cfg.credentialsFile;
