@@ -38,14 +38,7 @@ async def test_emits_metadata_from_track(port: FakeEventPort) -> None:
 
 
 @pytest.mark.asyncio
-async def test_emits_normalized_volume(port: FakeEventPort) -> None:
+async def test_volume_not_emitted_on_connect(port: FakeEventPort) -> None:
     adapter = BluetoothAdapter(port)
     await adapter._media_player_added("/org/bluez/player0", {"Volume": 127})
-    assert port.events[-1].volume == pytest.approx(1.0)
-
-
-@pytest.mark.asyncio
-async def test_missing_volume_is_none(port: FakeEventPort) -> None:
-    adapter = BluetoothAdapter(port)
-    await adapter._media_player_added("/org/bluez/player0", {})
     assert port.events[-1].volume is None

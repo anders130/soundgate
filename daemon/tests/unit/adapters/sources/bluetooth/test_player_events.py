@@ -84,7 +84,7 @@ async def test_track_change_emits_metadata(port: FakeEventPort) -> None:
 async def test_volume_change_emits_normalized_volume(port: FakeEventPort) -> None:
     adapter = BluetoothAdapter(port)
     await adapter._media_player_props_changed({"Volume": 127})
-    assert port.events[-1].volume == pytest.approx(1.0)
+    assert port.events[-1].volume == pytest.approx(1.0)  # active change, not init
 
 
 @pytest.mark.asyncio
@@ -92,3 +92,21 @@ async def test_no_changed_fields_emits_no_event(port: FakeEventPort) -> None:
     adapter = BluetoothAdapter(port)
     await adapter._media_player_props_changed({})
     assert port.events == []
+
+
+@pytest.mark.asyncio
+async def test_media_player_volume_echo_suppressed(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    adapter._last_synced_raw = 64
+    await adapter._media_player_props_changed({"Volume": 64})
+    assert all(e.volume is None for e in port.events)
+
+
+@pytest.mark.asyncio
+async def test_media_player_volume_different_not_suppressed(
+    port: FakeEventPort,
+) -> None:
+    adapter = BluetoothAdapter(port)
+    adapter._last_synced_raw = 64
+    await adapter._media_player_props_changed({"Volume": 80})
+    assert port.events[-1].volume == pytest.approx(80 / 127.0)

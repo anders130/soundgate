@@ -40,7 +40,8 @@ async def main() -> None:
     )
 
     query = QueryStateUseCase(sources=sources, aggregator=aggregator)
-    bluetooth = BluetoothAdapter(process)
+    bluetooth = BluetoothAdapter(process, volume_provider=lambda: process.volume)
+    process.register_volume_feedback(bluetooth)
     librespot = LibrespotAdapter.from_env(process)
     rest_api = RestApiAdapter.from_env(
         query=query,

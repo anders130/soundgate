@@ -24,3 +24,19 @@ async def test_transport_no_volume_emits_no_event(port: FakeEventPort) -> None:
     adapter = BluetoothAdapter(port)
     await adapter._media_transport_props_changed({})
     assert port.events == []
+
+
+@pytest.mark.asyncio
+async def test_echo_from_sync_volume_suppressed(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    adapter._last_synced_raw = 64
+    await adapter._media_transport_props_changed({"Volume": 64})
+    assert port.events == []
+
+
+@pytest.mark.asyncio
+async def test_different_value_after_sync_not_suppressed(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    adapter._last_synced_raw = 64
+    await adapter._media_transport_props_changed({"Volume": 80})
+    assert port.events[-1].volume == pytest.approx(80 / 127.0)
