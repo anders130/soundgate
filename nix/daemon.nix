@@ -55,6 +55,7 @@
             prePatch = ''
                 cat ${pkgs.writers.writeTOML "pyproject.toml" pyproject} > pyproject.toml
             '';
+            meta.mainProgram = "soundgate";
         };
 
         devShells.default = pkgs.mkShell {
