@@ -60,11 +60,15 @@ def _parse_position(msg: dict) -> int | None:
     return int(pos) * 1000 if pos else None
 
 
+_SESSION_RESET_EVENTS = {"session_disconnected", "session_client_changed"}
+
+
 class LibrespotAdapter:
     def __init__(self, socket_path: str, event_port: PlayerEventPort) -> None:
         self._socket_path = socket_path
         self._port = event_port
         self._heartbeat_task: asyncio.Task | None = None
+        self._session_active = False
 
     @classmethod
     def from_env(cls, event_port: PlayerEventPort) -> LibrespotAdapter:
@@ -103,9 +107,18 @@ class LibrespotAdapter:
         if ev not in _STATE_MAP:
             return
 
+        if ev == "playing":
+            self._session_active = True
+        elif ev in _SESSION_RESET_EVENTS:
+            self._session_active = False
+
         state = _STATE_MAP[ev]
         metadata = _parse_track(msg) if ev in _TRACK_EVENTS else None
-        volume = _parse_volume(msg) if ev == "volume_changed" else None
+        volume = (
+            _parse_volume(msg)
+            if ev == "volume_changed" and self._session_active
+            else None
+        )
         position_us = _parse_position(msg) if ev in ("playing", "paused") else None
 
         if state is None and metadata is None and volume is None:
