@@ -4,7 +4,9 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar, overload
 
-from dbus_fast import BusType
+_VolumeProvider = Callable[[], float]
+
+from dbus_fast import BusType, Variant
 from dbus_fast.aio import MessageBus
 from dbus_fast.constants import MessageType
 from dbus_fast.message import Message
@@ -51,14 +53,22 @@ def _parse_track(track: dict) -> Metadata:
 
 
 class BluetoothAdapter:
-    def __init__(self, event_port, art_lookup: _ArtLookup | None = None) -> None:
+    def __init__(
+        self,
+        event_port,
+        art_lookup: _ArtLookup | None = None,
+        volume_provider: _VolumeProvider | None = None,
+    ) -> None:
         self._port = event_port
         self._art_lookup: _ArtLookup = (
             art_lookup if art_lookup is not None else _default_lookup_art
         )
+        self._volume_provider = volume_provider
         self._bus: MessageBus | None = None
         self._connected: set[str] = set()
         self._media_player_path: str | None = None
+        self._transport_paths: set[str] = set()
+        self._last_synced_raw: int | None = None
 
     async def run(self) -> None:
         self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
@@ -116,8 +126,8 @@ class BluetoothAdapter:
                         path, ifaces["org.bluez.MediaPlayer1"]
                     )
                 if "org.bluez.MediaTransport1" in ifaces:
-                    await self._media_transport_props_changed(
-                        ifaces["org.bluez.MediaTransport1"]
+                    await self._media_transport_added(
+                        path, ifaces["org.bluez.MediaTransport1"]
                     )
             elif msg.member == "InterfacesRemoved":
                 path, ifaces = msg.body
@@ -126,6 +136,8 @@ class BluetoothAdapter:
                 if "org.bluez.MediaPlayer1" in ifaces:
                     if self._media_player_path == path:
                         self._media_player_path = None
+                if "org.bluez.MediaTransport1" in ifaces:
+                    self._transport_paths.discard(path)
         except Exception as e:
             _log.debug("BT dispatch error: %s", e)
 
@@ -153,8 +165,8 @@ class BluetoothAdapter:
                         path, ifaces["org.bluez.MediaPlayer1"]
                     )
                 if "org.bluez.MediaTransport1" in ifaces:
-                    await self._media_transport_props_changed(
-                        ifaces["org.bluez.MediaTransport1"]
+                    await self._media_transport_added(
+                        path, ifaces["org.bluez.MediaTransport1"]
                     )
         except Exception as e:
             _log.warning("BT scan failed: %s", e)
@@ -198,10 +210,8 @@ class BluetoothAdapter:
         )
         track: dict = _v(props.get("Track"), {})
         metadata = _parse_track(track) if track else None
-        raw_vol: int | None = _v(props.get("Volume"))
-        volume = raw_vol / 127.0 if raw_vol is not None else None
         await self._port.handle_event(
-            PlayerEvent(source=_SOURCE, state=state, metadata=metadata, volume=volume)
+            PlayerEvent(source=_SOURCE, state=state, metadata=metadata)
         )
 
     async def _media_player_props_changed(self, props: dict) -> None:
@@ -220,7 +230,7 @@ class BluetoothAdapter:
                 )
         if "Volume" in props:
             raw: int | None = _v(props["Volume"])
-            if raw is not None:
+            if raw is not None and raw != self._last_synced_raw:
                 await self._port.handle_event(
                     PlayerEvent(source=_SOURCE, volume=raw / 127.0)
                 )
@@ -231,14 +241,20 @@ class BluetoothAdapter:
             updated = dataclasses.replace(metadata, art_url=url)
             await self._port.handle_event(PlayerEvent(source=_SOURCE, metadata=updated))
 
+    async def _media_transport_added(self, path: str, props: dict) -> None:
+        self._transport_paths.add(path)
+        if self._volume_provider and self._bus:
+            await self.sync_volume(self._volume_provider())
+
     async def _media_transport_props_changed(self, props: dict) -> None:
         if "Volume" not in props:
             return
         raw: int | None = _v(props.get("Volume"))
-        if raw is not None:
-            await self._port.handle_event(
-                PlayerEvent(source=_SOURCE, volume=raw / 127.0)
-            )
+        if raw is None:
+            return
+        if raw == self._last_synced_raw:
+            return
+        await self._port.handle_event(PlayerEvent(source=_SOURCE, volume=raw / 127.0))
 
     async def _fetch_volume(self, path: str, iface: str) -> None:
         if not self._bus:
@@ -263,6 +279,28 @@ class BluetoothAdapter:
                 )
         except Exception as e:
             _log.debug("BT volume Get failed (%s): %s", iface, e)
+
+    async def sync_volume(self, level: float) -> None:
+        if not self._bus or not self._transport_paths:
+            return
+        raw = round(level * 127)
+        self._last_synced_raw = raw
+        await asyncio.gather(
+            *(
+                self._bus.call(
+                    Message(
+                        destination="org.bluez",
+                        path=path,
+                        interface="org.freedesktop.DBus.Properties",
+                        member="Set",
+                        signature="ssv",
+                        body=["org.bluez.MediaTransport1", "Volume", Variant("q", raw)],
+                    )
+                )
+                for path in self._transport_paths
+            ),
+            return_exceptions=True,
+        )
 
     async def _media_player_call(self, method: str) -> None:
         if not self._media_player_path or not self._bus:
