@@ -69,6 +69,7 @@ class BluetoothAdapter:
         self._media_player_path: str | None = None
         self._transport_paths: set[str] = set()
         self._last_synced_raw: int | None = None
+        self._initial_transport_raw: int | None = None
 
     async def run(self) -> None:
         self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
@@ -243,8 +244,10 @@ class BluetoothAdapter:
 
     async def _media_transport_added(self, path: str, props: dict) -> None:
         self._transport_paths.add(path)
+        self._initial_transport_raw = _v(props.get("Volume"))
         if self._volume_provider and self._bus:
             await self.sync_volume(self._volume_provider())
+        self._initial_transport_raw = None
 
     async def _media_transport_props_changed(self, props: dict) -> None:
         if "Volume" not in props:
@@ -253,6 +256,8 @@ class BluetoothAdapter:
         if raw is None:
             return
         if raw == self._last_synced_raw:
+            return
+        if raw == self._initial_transport_raw:
             return
         await self._port.handle_event(PlayerEvent(source=_SOURCE, volume=raw / 127.0))
 
@@ -273,7 +278,7 @@ class BluetoothAdapter:
             if not reply.body:
                 return
             raw: int | None = _v(reply.body[0])
-            if raw is not None:
+            if raw is not None and raw != self._last_synced_raw:
                 await self._port.handle_event(
                     PlayerEvent(source=_SOURCE, volume=raw / 127.0)
                 )

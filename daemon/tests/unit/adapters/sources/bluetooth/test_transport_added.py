@@ -55,3 +55,26 @@ async def test_transport_added_no_sync_without_bus(port: FakeEventPort) -> None:
     adapter = BluetoothAdapter(port, volume_provider=lambda: 0.5)
     await adapter._media_transport_added("/transport/0", {"Volume": 80})
     # must not raise, no sync attempted
+
+
+@pytest.mark.asyncio
+async def test_initial_phone_volume_echo_suppressed(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    adapter._initial_transport_raw = 30
+    await adapter._media_transport_props_changed({"Volume": 30})
+    assert port.events == []
+
+
+@pytest.mark.asyncio
+async def test_initial_transport_raw_cleared_after_add(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    await adapter._media_transport_added("/transport/0", {"Volume": 30})
+    assert adapter._initial_transport_raw is None
+
+
+@pytest.mark.asyncio
+async def test_different_volume_after_add_not_suppressed(port: FakeEventPort) -> None:
+    adapter = BluetoothAdapter(port)
+    adapter._initial_transport_raw = 30
+    await adapter._media_transport_props_changed({"Volume": 80})
+    assert port.events[-1].volume == pytest.approx(80 / 127.0)
