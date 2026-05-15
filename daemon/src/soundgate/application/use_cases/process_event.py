@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from ...domain.aggregator import AggregatorService
 from ...domain.events import PlayerEvent
 from ...domain.source import Source
-from ..ports.outbound import StateExportPort, VolumePort
+from ..ports.outbound import StateExportPort, VolumeFeedbackPort, VolumePort
 from ..snapshot import Snapshot
 
 
@@ -23,14 +23,26 @@ class ProcessEventUseCase:
         self._volume_port = volume_port
         self._volume: float = initial_volume
         self._sinks: list[StateExportPort] = []
+        self._volume_feedbacks: list[VolumeFeedbackPort] = []
 
     def register_sink(self, sink: StateExportPort) -> None:
         self._sinks.append(sink)
 
+    def register_volume_feedback(self, feedback: VolumeFeedbackPort) -> None:
+        self._volume_feedbacks.append(feedback)
+
+    async def _push_volume(self, level: float) -> None:
+        if self._volume_feedbacks:
+            await asyncio.gather(
+                *(fb.sync_volume(level) for fb in self._volume_feedbacks),
+                return_exceptions=True,
+            )
+
     async def handle_event(self, event: PlayerEvent) -> None:
         if event.volume is not None:
-            self._volume = event.volume
-            await self._volume_port.set_volume(event.volume)
+            self._volume = max(0.0, min(1.0, event.volume))
+            await self._volume_port.set_volume(self._volume)
+            await self._push_volume(self._volume)
 
         name = event.source
         if name not in self.sources:
@@ -59,6 +71,7 @@ class ProcessEventUseCase:
     async def set_volume(self, level: float) -> None:
         self._volume = max(0.0, min(1.0, level))
         await self._volume_port.set_volume(self._volume)
+        await self._push_volume(self._volume)
         await self._publish()
 
     async def tick(self) -> None:

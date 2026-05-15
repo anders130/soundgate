@@ -86,3 +86,71 @@ async def test_set_volume_publishes_snapshot(volume_port: FakeVolumePort) -> Non
     uc.register_sink(sink)
     await uc.set_volume(0.3)
     assert sink.snapshots[-1].volume == 0.3
+
+
+class FakeVolumeFeedback:
+    def __init__(self) -> None:
+        self.volumes: list[float] = []
+
+    async def sync_volume(self, level: float) -> None:
+        self.volumes.append(level)
+
+
+@pytest.mark.asyncio
+async def test_volume_event_pushes_to_feedback(volume_port: FakeVolumePort) -> None:
+    uc = make_use_case(volume_port)
+    fb = FakeVolumeFeedback()
+    uc.register_volume_feedback(fb)
+    await uc.handle_event(PlayerEvent(source="bluetooth", volume=0.5))
+    assert fb.volumes == [0.5]
+
+
+@pytest.mark.asyncio
+async def test_set_volume_pushes_to_feedback(volume_port: FakeVolumePort) -> None:
+    uc = make_use_case(volume_port)
+    fb = FakeVolumeFeedback()
+    uc.register_volume_feedback(fb)
+    await uc.set_volume(0.3)
+    assert fb.volumes == [0.3]
+
+
+@pytest.mark.asyncio
+async def test_no_feedback_when_event_has_no_volume(
+    volume_port: FakeVolumePort,
+) -> None:
+    from soundgate.domain.events import PlaybackState
+
+    uc = make_use_case(volume_port)
+    fb = FakeVolumeFeedback()
+    uc.register_volume_feedback(fb)
+    await uc.handle_event(PlayerEvent(source="bluetooth", state=PlaybackState.PLAYING))
+    assert fb.volumes == []
+
+
+@pytest.mark.asyncio
+async def test_volume_persists_across_source_switch(
+    volume_port: FakeVolumePort,
+) -> None:
+    from soundgate.domain.events import PlaybackState
+
+    uc = make_use_case(volume_port)
+    await uc.handle_event(PlayerEvent(source="bluetooth", volume=0.5))
+    assert uc.volume == pytest.approx(0.5)
+    await uc.handle_event(PlayerEvent(source="spotify", state=PlaybackState.PLAYING))
+    assert uc.volume == pytest.approx(0.5)
+    await uc.handle_event(PlayerEvent(source="bluetooth", state=PlaybackState.PLAYING))
+    assert uc.volume == pytest.approx(0.5)
+
+
+@pytest.mark.asyncio
+async def test_set_volume_persists_across_source_events(
+    volume_port: FakeVolumePort,
+) -> None:
+    from soundgate.domain.events import PlaybackState
+
+    uc = make_use_case(volume_port)
+    await uc.set_volume(0.3)
+    await uc.handle_event(PlayerEvent(source="bluetooth", state=PlaybackState.PLAYING))
+    assert uc.volume == pytest.approx(0.3)
+    await uc.handle_event(PlayerEvent(source="spotify", state=PlaybackState.PLAYING))
+    assert uc.volume == pytest.approx(0.3)
