@@ -15,6 +15,7 @@ soundgate = "soundgate.main:run"
 packages = ["src/soundgate"]
 
 [tool.isort]
+known_first_party = ["soundgate"]
 profile = "black"
 
 [tool.pytest.ini_options]
