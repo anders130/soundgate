@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from soundgate.adapters.sources.bluetooth import BluetoothAdapter
@@ -58,23 +60,41 @@ async def test_transport_added_no_sync_without_bus(port: FakeEventPort) -> None:
 
 
 @pytest.mark.asyncio
-async def test_initial_phone_volume_echo_suppressed(port: FakeEventPort) -> None:
+async def test_phone_volume_suppressed_immediately_after_add(
+    port: FakeEventPort,
+) -> None:
     adapter = BluetoothAdapter(port)
-    adapter._initial_transport_raw = 30
-    await adapter._media_transport_props_changed({"Volume": 30})
+    await adapter._media_transport_added("/transport/0", {"Volume": 80})
+    await adapter._media_transport_props_changed({"Volume": 80})
     assert port.events == []
 
 
 @pytest.mark.asyncio
-async def test_initial_transport_raw_cleared_after_add(port: FakeEventPort) -> None:
+async def test_phone_volume_suppressed_shortly_after_add(
+    port: FakeEventPort,
+) -> None:
     adapter = BluetoothAdapter(port)
-    await adapter._media_transport_added("/transport/0", {"Volume": 30})
-    assert adapter._initial_transport_raw is None
+    await adapter._media_transport_added("/transport/0", {"Volume": 80})
+    # volume event arriving shortly after add (phone revert) must be suppressed
+    await adapter._media_transport_props_changed({"Volume": 80})
+    assert port.events == []
 
 
 @pytest.mark.asyncio
-async def test_different_volume_after_add_not_suppressed(port: FakeEventPort) -> None:
+async def test_phone_volume_accepted_after_suppress_window(
+    port: FakeEventPort,
+) -> None:
     adapter = BluetoothAdapter(port)
-    adapter._initial_transport_raw = 30
+    adapter._volume_suppress_deadline = 0.0  # expired
     await adapter._media_transport_props_changed({"Volume": 80})
     assert port.events[-1].volume == pytest.approx(80 / 127.0)
+
+
+@pytest.mark.asyncio
+async def test_different_volume_after_suppress_window_accepted(
+    port: FakeEventPort,
+) -> None:
+    adapter = BluetoothAdapter(port)
+    adapter._volume_suppress_deadline = 0.0  # expired
+    await adapter._media_transport_props_changed({"Volume": 50})
+    assert port.events[-1].volume == pytest.approx(50 / 127.0)

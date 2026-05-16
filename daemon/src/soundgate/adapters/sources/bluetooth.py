@@ -1,6 +1,7 @@
 import asyncio
 import dataclasses
 import logging
+import time
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar, overload
 
@@ -69,7 +70,7 @@ class BluetoothAdapter:
         self._media_player_path: str | None = None
         self._transport_paths: set[str] = set()
         self._last_synced_raw: int | None = None
-        self._initial_transport_raw: int | None = None
+        self._volume_suppress_deadline: float = 0.0
 
     async def run(self) -> None:
         self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
@@ -244,10 +245,9 @@ class BluetoothAdapter:
 
     async def _media_transport_added(self, path: str, props: dict) -> None:
         self._transport_paths.add(path)
-        self._initial_transport_raw = _v(props.get("Volume"))
+        self._volume_suppress_deadline = time.monotonic() + 1.5
         if self._volume_provider and self._bus:
             await self.sync_volume(self._volume_provider())
-        self._initial_transport_raw = None
 
     async def _media_transport_props_changed(self, props: dict) -> None:
         if "Volume" not in props:
@@ -257,7 +257,7 @@ class BluetoothAdapter:
             return
         if raw == self._last_synced_raw:
             return
-        if raw == self._initial_transport_raw:
+        if time.monotonic() < self._volume_suppress_deadline:
             return
         await self._port.handle_event(PlayerEvent(source=_SOURCE, volume=raw / 127.0))
 
@@ -285,7 +285,7 @@ class BluetoothAdapter:
         except Exception as e:
             _log.debug("BT volume Get failed (%s): %s", iface, e)
 
-    async def sync_volume(self, level: float) -> None:
+    async def sync_volume(self, level: float, source: str | None = None) -> None:
         if not self._bus or not self._transport_paths:
             return
         raw = round(level * 127)
