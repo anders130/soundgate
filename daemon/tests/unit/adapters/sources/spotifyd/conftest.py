@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from soundgate.adapters.sources.librespot import LibrespotAdapter
+from soundgate.adapters.sources.spotifyd import SpotifydAdapter
 from soundgate.application.ports.inbound import PlayerEventPort
 from soundgate.domain.events import PlayerEvent
 
@@ -20,8 +20,8 @@ def port() -> FakeEventPort:
     return FakeEventPort()
 
 
-def make_adapter(port: FakeEventPort) -> LibrespotAdapter:
-    return LibrespotAdapter("/tmp/test.sock", port)
+def make_adapter(port: FakeEventPort) -> SpotifydAdapter:
+    return SpotifydAdapter("/tmp/test.sock", port)
 
 
 def enc(**fields: str) -> bytes:

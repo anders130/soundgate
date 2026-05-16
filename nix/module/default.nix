@@ -10,7 +10,7 @@
     in {
         imports = [
             inputs.self.nixosModules.soundgate-bluetooth
-            inputs.self.nixosModules.soundgate-librespot
+            inputs.self.nixosModules.soundgate-spotifyd
             inputs.self.nixosModules.soundgate-hass
         ];
 
@@ -61,7 +61,10 @@
                     SOUNDGATE_HTTP_PORT = toString cfg.httpPort;
                     SOUNDGATE_INACTIVITY_TIMEOUT = toString cfg.inactivityTimeout;
                     SOUNDGATE_PIPEWIRE_SINK = cfg.pipewireSink;
-                    SOUNDGATE_CONTROL_PIPEWIRE_VOLUME = if cfg.controlPipewireVolume then "1" else "0";
+                    SOUNDGATE_CONTROL_PIPEWIRE_VOLUME =
+                        if cfg.controlPipewireVolume
+                        then "1"
+                        else "0";
                     SOUNDGATE_CACHE_DIR = "/var/cache/soundgate";
                     PIPEWIRE_RUNTIME_DIR = "/run/pipewire";
                 };

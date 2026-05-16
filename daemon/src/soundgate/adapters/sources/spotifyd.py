@@ -6,6 +6,7 @@ import logging
 import os
 import pathlib
 import socket
+from collections.abc import Awaitable, Callable
 
 from soundgate.application.ports.inbound import PlayerEventPort
 from soundgate.domain.events import Metadata, PlaybackState, PlayerEvent
@@ -15,27 +16,18 @@ _log = logging.getLogger(__name__)
 _SOURCE = "spotify"
 
 _STATE_MAP: dict[str, PlaybackState | None] = {
-    "started": PlaybackState.PLAYING,
+    "start": PlaybackState.PLAYING,
+    "play": PlaybackState.PLAYING,
     "playing": PlaybackState.PLAYING,
+    "pause": PlaybackState.PAUSED,
     "paused": PlaybackState.PAUSED,
+    "stop": PlaybackState.STOPPED,
     "stopped": PlaybackState.STOPPED,
-    "changed": None,
-    "track_changed": None,
-    "volume_changed": None,
-    "preloading": None,
-    "loading": None,
-    "unavailable": PlaybackState.STOPPED,
-    "session_connected": None,
-    "session_disconnected": None,
-    "session_client_changed": None,
-    "auto_play_changed": None,
-    "filter_explicit_content_changed": None,
-    "shuffle_changed": None,
-    "repeat_changed": None,
-    "play_request_id_changed": None,
+    "change": None,
+    "volumeset": None,
 }
 
-_TRACK_EVENTS = {"changed", "track_changed"}
+_TRACK_EVENTS = {"change"}
 
 
 def _parse_track(msg: dict) -> Metadata:
@@ -60,18 +52,31 @@ def _parse_position(msg: dict) -> int | None:
     return int(pos) * 1000 if pos else None
 
 
-class LibrespotAdapter:
-    def __init__(self, socket_path: str, event_port: PlayerEventPort) -> None:
+class SpotifydAdapter:
+    def __init__(
+        self,
+        socket_path: str,
+        event_port: PlayerEventPort,
+        on_init_suppressed: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         self._socket_path = socket_path
         self._port = event_port
+        self._on_init_suppressed = on_init_suppressed
         self._heartbeat_task: asyncio.Task | None = None
+        self._volume_guarded: bool = True
+        self._session_init_volume: float | None = None
+        self._init_restore_triggered: bool = False
 
     @classmethod
-    def from_env(cls, event_port: PlayerEventPort) -> LibrespotAdapter:
+    def from_env(
+        cls,
+        event_port: PlayerEventPort,
+        on_init_suppressed: Callable[[], Awaitable[None]] | None = None,
+    ) -> SpotifydAdapter:
         path = os.environ.get(
-            "SOUNDGATE_LIBRESPOT_SOCKET", "/run/soundgate/librespot.sock"
+            "SOUNDGATE_SPOTIFYD_SOCKET", "/run/soundgate/spotifyd.sock"
         )
-        return cls(path, event_port)
+        return cls(path, event_port, on_init_suppressed=on_init_suppressed)
 
     async def run(self) -> None:
         p = pathlib.Path(self._socket_path)
@@ -83,7 +88,7 @@ class LibrespotAdapter:
         sock.bind(self._socket_path)
         os.chmod(self._socket_path, 0o666)
 
-        _log.info("librespot adapter listening on %s", self._socket_path)
+        _log.info("spotifyd adapter listening on %s", self._socket_path)
         loop = asyncio.get_running_loop()
         try:
             while True:
@@ -100,13 +105,32 @@ class LibrespotAdapter:
             return
 
         ev = msg.get("event", "")
+
+        if ev in ("sessionconnected", "sessiondisconnected"):
+            self._volume_guarded = True
+            self._session_init_volume = None
+            self._init_restore_triggered = False
+            return
+
         if ev not in _STATE_MAP:
             return
 
         state = _STATE_MAP[ev]
         metadata = _parse_track(msg) if ev in _TRACK_EVENTS else None
-        volume = _parse_volume(msg) if ev == "volume_changed" else None
-        position_us = _parse_position(msg) if ev in ("playing", "paused") else None
+        volume = self._filter_volume(msg, ev)
+        position_us = (
+            _parse_position(msg) if ev in ("playing", "pause", "paused") else None
+        )
+
+        if (
+            ev == "volumeset"
+            and volume is None
+            and self._volume_guarded
+            and not self._init_restore_triggered
+            and self._on_init_suppressed is not None
+        ):
+            self._init_restore_triggered = True
+            await self._on_init_suppressed()
 
         if state is None and metadata is None and volume is None:
             return
@@ -125,6 +149,23 @@ class LibrespotAdapter:
                 position_us=position_us,
             )
         )
+
+    def _filter_volume(self, msg: dict, ev: str) -> float | None:
+        if ev != "volumeset":
+            return None
+        raw = _parse_volume(msg)
+        if raw is None:
+            return None
+        if not self._volume_guarded:
+            return raw
+        if self._session_init_volume is None:
+            self._session_init_volume = raw
+            return None
+        if raw == self._session_init_volume:
+            return None
+        self._volume_guarded = False
+        self._session_init_volume = None
+        return raw
 
     def _start_heartbeat(self) -> None:
         if self._heartbeat_task and not self._heartbeat_task.done():

@@ -4,10 +4,11 @@ import asyncio
 import logging
 import os
 
+from .adapters.sinks.alsa_volume import AlsaVolumeAdapter
 from .adapters.sinks.pipewire_volume import PipewireVolumeAdapter
 from .adapters.sinks.rest_api.adapter import RestApiAdapter
 from .adapters.sources.bluetooth import BluetoothAdapter
-from .adapters.sources.librespot import LibrespotAdapter
+from .adapters.sources.spotifyd import SpotifydAdapter
 from .application.use_cases.process_event import ProcessEventUseCase
 from .application.use_cases.query_state import QueryStateUseCase
 from .domain.aggregator import AggregatorService
@@ -42,14 +43,25 @@ async def main() -> None:
     query = QueryStateUseCase(sources=sources, aggregator=aggregator)
     bluetooth = BluetoothAdapter(process, volume_provider=lambda: process.volume)
     process.register_volume_feedback(bluetooth)
-    librespot = LibrespotAdapter.from_env(process)
+    alsa_volume = AlsaVolumeAdapter.from_env()
+    if alsa_volume is not None:
+        process.register_volume_feedback(alsa_volume)
+
+    async def _restore_alsa_volume() -> None:
+        if alsa_volume is not None:
+            await alsa_volume.sync_volume(process.volume)
+
+    spotifyd = SpotifydAdapter.from_env(
+        process,
+        on_init_suppressed=_restore_alsa_volume if alsa_volume is not None else None,
+    )
     rest_api = RestApiAdapter.from_env(
         query=query,
         process=process,
         control_map={"bluetooth": bluetooth},
     )
 
-    await asyncio.gather(bluetooth.run(), librespot.run(), rest_api.run())
+    await asyncio.gather(bluetooth.run(), spotifyd.run(), rest_api.run())
 
 
 def run() -> None:
