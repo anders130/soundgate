@@ -1,0 +1,178 @@
+From bf95238e19c588cee8a15fce24d92322499556e5 Mon Sep 17 00:00:00 2001
+From: yanndroid <yanndroid.dev@gmail.com>
+Date: Sat, 24 Jan 2026 04:11:56 +0100
+Subject: [PATCH] feat: monitor alsa volume (vibe-coded)
+
+---
+ src/alsa_mixer.rs | 63 ++++++++++++++++++++++++++++++++++++++++++++---
+ src/main_loop.rs  | 10 ++++++++
+ src/setup.rs      | 14 +++++++----
+ 3 files changed, 79 insertions(+), 8 deletions(-)
+
+diff --git a/src/alsa_mixer.rs b/src/alsa_mixer.rs
+index 462eecc9..6262c020 100644
+--- a/src/alsa_mixer.rs
++++ b/src/alsa_mixer.rs
+@@ -1,4 +1,5 @@
+ use alsa::device_name::HintIter;
++use alsa::PollDescriptors;
+ use color_eyre::{
+     Section,
+     eyre::{self, Context, eyre},
+@@ -69,9 +70,8 @@ impl AlsaMixer {
+         Ok(())
+     }
+
+-    fn get_volume_with_err(&self) -> eyre::Result<u16> {
+-        let lock = self.mixer.lock().expect("lock shouldn't be poisoned");
+-        let elem = self.get_selem(&lock)?;
++    fn get_volume_internal<'a>(&'a self, lock: &'a MutexGuard<'a, alsa::Mixer>) -> eyre::Result<u16> {
++        let elem = self.get_selem(lock)?;
+         let (min, max) = elem.get_playback_volume_range();
+         let volume_steps = (max - min) as f64;
+         let vol = elem.get_playback_volume(alsa::mixer::SelemChannelId::mono())?;
+@@ -85,6 +85,63 @@ impl AlsaMixer {
+         };
+         Ok(normalized_volume)
+     }
++
++    fn get_volume_with_err(&self) -> eyre::Result<u16> {
++        let lock = self.mixer.lock().expect("lock shouldn't be poisoned");
++        self.get_volume_internal(&lock)
++    }
++
++    pub fn monitor(&self) -> tokio::sync::mpsc::UnboundedReceiver<u16> {
++        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
++        let self_clone = AlsaMixer {
++            mixer: self.mixer.clone(),
++            config: self.config.clone(),
++        };
++
++        std::thread::spawn(move || {
++            let mut fds = {
++                let lock = self_clone.mixer.lock().unwrap();
++                match lock.get() {
++                    Ok(fds) => fds,
++                    Err(e) => {
++                        error!("Failed to get ALSA fds: {:?}", e);
++                        return;
++                    }
++                }
++            };
++
++            loop {
++                // Poll descriptors
++                if let Err(e) = alsa::poll::poll(&mut fds, 100) {
++                     error!("ALSA poll failed: {:?}", e);
++                     // If poll fails, maybe backoff or just continue to retry
++                }
++
++                // Check events
++                {
++                    let lock = self_clone.mixer.lock().unwrap();
++                     match lock.handle_events() {
++                        Ok(changed_count) if changed_count > 0 => {
++                            // Events occurred, update volume
++                             match self_clone.get_volume_internal(&lock) {
++                                Ok(vol) => {
++                                    if tx.send(vol).is_err() {
++                                        // Receiver dropped
++                                        break;
++                                    }
++                                }
++                                Err(e) => error!("Failed to get volume after ALSA event: {:?}", e),
++                            }
++                        }
++                        Ok(_) => {}, // No relevant events
++                        Err(e) => error!("ALSA handle_events failed: {:?}", e),
++                    }
++                }
++            }
++        });
++
++        rx
++    }
+ }
+
+ impl Mixer for AlsaMixer {
+diff --git a/src/main_loop.rs b/src/main_loop.rs
+index 69832fde..4bbf1332 100644
+--- a/src/main_loop.rs
++++ b/src/main_loop.rs
+@@ -89,6 +89,7 @@ pub(crate) struct MainLoop {
+     pub(crate) credentials_provider: CredentialsProvider,
+     #[cfg(feature = "dbus_mpris")]
+     pub(crate) mpris_config: MprisConfig,
++    pub(crate) volume_monitor_rx: Option<tokio::sync::mpsc::UnboundedReceiver<u16>>,
+ }
+
+ struct ConnectionInfo<SpircTask: Future<Output = ()>> {
+@@ -266,6 +267,15 @@ impl MainLoop {
+                             Err(e) => error!("{}", e),
+                         }
+                     }
++                    // alsa volume changed
++                    Some(vol) = async {
++                         match self.volume_monitor_rx.as_mut() {
++                             Some(rx) => rx.recv().await,
++                             None => future::pending().await,
++                         }
++                    } => {
++                        let _ = shared_spirc.set_volume(vol);
++                    }
+                 )
+             }
+             #[cfg(feature = "dbus_mpris")]
+diff --git a/src/setup.rs b/src/setup.rs
+index 52d5acff..9362e2bf 100644
+--- a/src/setup.rs
++++ b/src/setup.rs
+@@ -17,11 +17,11 @@ use std::{sync::Arc, thread};
+ pub(crate) fn initial_state(
+     config: config::SpotifydConfig,
+ ) -> color_eyre::Result<main_loop::MainLoop> {
+-    let mixer: Arc<dyn Mixer> = {
++    let (mixer, volume_monitor_rx) = {
+         match config.volume_controller {
+             config::VolumeController::None => {
+                 info!("Using no volume controller.");
+-                Arc::new(crate::no_mixer::NoMixer)
++                (Arc::new(crate::no_mixer::NoMixer) as Arc<dyn Mixer>, None)
+             }
+             #[cfg(feature = "alsa_backend")]
+             config::VolumeController::Alsa | config::VolumeController::AlsaLinear => {
+@@ -48,7 +48,7 @@ pub(crate) fn initial_state(
+                 } else {
+                     VolumeCtrl::Log(0.0) /* this value is ignored */
+                 };
+-                Arc::new(alsa_mixer::AlsaMixer::open(MixerConfig {
++                let alsa_mixer = alsa_mixer::AlsaMixer::open(MixerConfig {
+                     device,
+                     control,
+                     index: 0,
+@@ -60,13 +60,16 @@ pub(crate) fn initial_state(
+                             format!("maybe try one of the following as 'mixer':{}", controls.filter_map(|hint| hint.name.map(|name| format!("\n- {name}"))).collect::<String>())
+                         }
+                     }
+-                })?)
++                })?;
++
++                let rx = alsa_mixer.monitor();
++                (Arc::new(alsa_mixer) as Arc<dyn Mixer>, Some(rx))
+             }
+             _ => {
+                 info!("Using software volume controller.");
+                 let mixer = mixer::softmixer::SoftMixer::open(MixerConfig::default())
+                     .expect("SoftMixer::open never returns an Error");
+-                Arc::new(mixer)
++                (Arc::new(mixer) as Arc<dyn Mixer>, None)
+             }
+         }
+     };
+@@ -162,5 +165,6 @@ pub(crate) fn initial_state(
+         player_event_program: config.onevent,
+         #[cfg(feature = "dbus_mpris")]
+         mpris_config: config.mpris,
++        volume_monitor_rx,
+     })
+ }
