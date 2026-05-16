@@ -31,10 +31,10 @@ class ProcessEventUseCase:
     def register_volume_feedback(self, feedback: VolumeFeedbackPort) -> None:
         self._volume_feedbacks.append(feedback)
 
-    async def _push_volume(self, level: float) -> None:
+    async def _push_volume(self, level: float, source: str | None = None) -> None:
         if self._volume_feedbacks:
             await asyncio.gather(
-                *(fb.sync_volume(level) for fb in self._volume_feedbacks),
+                *(fb.sync_volume(level, source) for fb in self._volume_feedbacks),
                 return_exceptions=True,
             )
 
@@ -42,7 +42,7 @@ class ProcessEventUseCase:
         if event.volume is not None:
             self._volume = max(0.0, min(1.0, event.volume))
             await self._volume_port.set_volume(self._volume)
-            await self._push_volume(self._volume)
+            await self._push_volume(self._volume, source=event.source)
 
         name = event.source
         if name not in self.sources:

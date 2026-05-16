@@ -13,7 +13,7 @@ class StateExportPort(Protocol):
 
 
 class VolumeFeedbackPort(Protocol):
-    async def sync_volume(self, level: float) -> None: ...
+    async def sync_volume(self, level: float, source: str | None = None) -> None: ...
 
 
 class SourceControlPort(Protocol):

@@ -92,7 +92,7 @@ class FakeVolumeFeedback:
     def __init__(self) -> None:
         self.volumes: list[float] = []
 
-    async def sync_volume(self, level: float) -> None:
+    async def sync_volume(self, level: float, source: str | None = None) -> None:
         self.volumes.append(level)
 
 
