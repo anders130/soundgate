@@ -11,7 +11,6 @@
         imports = [
             inputs.self.nixosModules.soundgate-bluetooth
             inputs.self.nixosModules.soundgate-spotifyd
-            inputs.self.nixosModules.soundgate-hass
         ];
 
         options.services.soundgate = {
