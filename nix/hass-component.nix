@@ -9,6 +9,10 @@
                 mkdir -p $out/${pkgs.python3.sitePackages}/custom_components
                 cp -r custom_components/soundgate $out/${pkgs.python3.sitePackages}/custom_components/
             '';
+            passthru = {
+                isHomeAssistantComponent = true;
+                domain = "soundgate";
+            };
         };
     };
 }
