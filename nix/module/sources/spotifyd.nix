@@ -1,4 +1,4 @@
-{
+{inputs, ...}: {
     flake.nixosModules.soundgate-spotifyd = {
         config,
         lib,
@@ -90,15 +90,10 @@
         };
 
         config = mkIf cfg.enable {
-            nixpkgs.overlays = lib.optionals cfg.alsaVolumeSync [
-                (_: prev: {
-                    spotifyd = prev.spotifyd.overrideAttrs (old: {
-                        patches = (old.patches or []) ++ [../../patches/spotifyd-alsa-volume-sync.patch];
-                    });
-                })
-            ];
-
             services.spotifyd = {
+                package =
+                    mkIf cfg.alsaVolumeSync
+                    inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.spotifyd-patched;
                 enable = true;
                 settings.global =
                     {
