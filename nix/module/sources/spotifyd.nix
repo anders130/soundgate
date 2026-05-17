@@ -90,10 +90,13 @@
         };
 
         config = mkIf cfg.enable {
+            nixpkgs.overlays = lib.optionals cfg.alsaVolumeSync [
+                (_: _: {
+                    spotifyd = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.spotifyd-patched;
+                })
+            ];
+
             services.spotifyd = {
-                package =
-                    mkIf cfg.alsaVolumeSync
-                    inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.spotifyd-patched;
                 enable = true;
                 settings.global =
                     {
